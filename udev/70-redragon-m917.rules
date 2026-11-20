@@ -1,0 +1,2 @@
+# Redragon M917 ST4R Pro (Compx receiver fa7c / wired fa7b): let the logged-in user read battery via hidraw
+KERNEL=="hidraw*", ATTRS{idVendor}=="25a7", ATTRS{idProduct}=="fa7b|fa7c", TAG+="uaccess"

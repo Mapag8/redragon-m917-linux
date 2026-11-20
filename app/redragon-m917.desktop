@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Redragon M917
+GenericName=Configuración del mouse
+Comment=Polling rate, DPI, luz de la rueda, botones y batería del Redragon M917
+Exec=@BIN@/redragon-m917
+Icon=redragon-m917-config
+Terminal=false
+Categories=Settings;HardwareSettings;
+Keywords=mouse;raton;redragon;dpi;polling;m917;
+StartupWMClass=m917.py
