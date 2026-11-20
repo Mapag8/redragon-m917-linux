@@ -6,6 +6,134 @@ Solo usa los comandos 0x03 (conexión), 0x04 (batería), 0x07 (escribir) y 0x08 
 """
 import os, sys, glob, time, fcntl, select, copy
 
+
+# ---------------------------------------------------------------- idioma / language
+def _detect_lang():
+    v = (os.environ.get("M917_LANG") or os.environ.get("LC_ALL") or os.environ.get("LC_MESSAGES")
+         or os.environ.get("LANG") or "")
+    return "es" if v.lower().startswith("es") else "en"
+
+LANG = _detect_lang()
+
+# Spanish source text -> English. Anything missing here is shown in Spanish.
+EN = {
+    # errors
+    "No se encontró el receptor ni el cable del mouse.": "Mouse receiver or cable not found.",
+    "Sin permiso para abrir {node}: {e}": "No permission to open {node}: {e} (is the udev rule installed?)",
+    "El mouse está apagado, dormido o en modo Bluetooth. Movelo o pasalo a 2.4 GHz.":
+        "The mouse is off, asleep or in Bluetooth mode. Move it or switch it to 2.4 GHz.",
+    "Mouse no conectado": "Mouse not connected",
+    "Error al enviar al mouse: {e}": "Error sending to the mouse: {e}",
+    "El mouse no respondió (comando 0x{cmd:02x}). ¿Está dormido? Movelo y reintentá.":
+        "The mouse did not answer (command 0x{cmd:02x}). Is it asleep? Move it and try again.",
+    "El mouse rechazó la escritura en 0x{addr:02x} (estado {st})": "The mouse rejected the write at 0x{addr:02x} (status {st})",
+    # buttons and functions
+    "Izquierdo": "Left", "Derecho": "Right", "Rueda (clic)": "Wheel (click)",
+    "Lateral atrás": "Side back", "Lateral adelante": "Side forward", "Botón DPI": "DPI button",
+    "Clic izquierdo": "Left click", "Clic derecho": "Right click", "Clic medio": "Middle click",
+    "Atrás": "Back", "Adelante": "Forward", "DPI en ciclo": "DPI cycle",
+    "DPI + (experimental)": "DPI + (experimental)", "DPI − (experimental)": "DPI − (experimental)",
+    "Deshabilitado": "Disabled", "Otro ({code})": "Other ({code})",
+    # change labels
+    "polling rate": "polling rate", "cantidad de niveles DPI": "number of DPI levels",
+    "nivel DPI activo": "active DPI level", "DPI nivel {n}": "DPI level {n}", "color nivel {n}": "colour level {n}",
+    "luz de la rueda": "wheel light", "botón {name}": "button {name}", "tiempo para dormir": "sleep time",
+    "apagar luz al mover": "light off while moving",
+    # advanced help
+    "Altura a la que el sensor deja de leer cuando levantás el mouse. 1 mm: el cursor no se "
+    "mueve al levantarlo y reacomodarlo (ideal para juegos con sensibilidad baja). 2 mm: tolera "
+    "mejor superficies irregulares o mousepads gruesos.":
+        "Height at which the sensor stops tracking when you lift the mouse. 1 mm: the cursor doesn't "
+        "move when you lift and reposition it (ideal for low-sensitivity gaming). 2 mm: copes better "
+        "with uneven surfaces or thick mousepads.",
+    "Tiempo que el mouse ignora el rebote del switch después de un clic. Más bajo = el clic "
+    "registra un poquito antes, pero si es muy bajo puede aparecer doble clic fantasma. "
+    "El fabricante recomienda 8 ms; si notás doble clic, subilo.":
+        "Time the mouse ignores switch bounce after a click. Lower = clicks register slightly sooner, "
+        "but too low can cause phantom double clicks. The manufacturer recommends 8 ms; if you get "
+        "double clicks, raise it.",
+    "Sincroniza las lecturas del sensor con el momento en que la PC pide datos. El movimiento "
+    "queda más parejo y consistente, a cambio de un retraso mínimo (menos de 1 ms).":
+        "Syncs sensor readings with the moment the PC polls. Movement is smoother and more consistent, "
+        "at the cost of a tiny delay (under 1 ms).",
+    "Tiempo sin moverlo antes de que el mouse se duerma para ahorrar batería. Se despierta "
+    "al moverlo o hacer clic. Más corto = más batería; más largo = menos 'despertares'.":
+        "Idle time before the mouse sleeps to save battery. It wakes up when you move it or click. "
+        "Shorter = more battery; longer = fewer wake-ups.",
+    "Corrige el movimiento para que las líneas casi rectas salgan perfectamente rectas. "
+    "Sirve para dibujar o en Office; en juegos conviene apagado porque altera tu movimiento real.":
+        "Straightens almost-straight lines. Handy for drawing or office work; keep it off for gaming "
+        "because it alters your real movement.",
+    "Suaviza el pequeño temblor del sensor a DPI altos. Da un cursor más estable pero agrega "
+    "algo de retraso; en general conviene apagado salvo que uses DPI muy altos.":
+        "Smooths sensor jitter at high DPI. Steadier cursor but adds some delay; usually best off "
+        "unless you use very high DPI.",
+    "Apaga la luz de la rueda mientras movés el mouse y la prende cuando lo dejás quieto. "
+    "Ahorra un poco de batería.":
+        "Turns the wheel light off while you move the mouse and back on when it rests. Saves a little battery.",
+    "Cuántas veces por segundo el mouse le informa su posición a la PC. 1000 Hz = 1 ms entre "
+    "reportes, el más fluido. Menos Hz = algo más de batería. Queda guardado en el mouse.":
+        "How many times per second the mouse reports its position. 1000 Hz = 1 ms between reports, "
+        "the smoothest. Fewer Hz = a bit more battery. Stored in the mouse.",
+    # window
+    "Buscando mouse…": "Looking for the mouse…", "Buscando el mouse…": "Looking for the mouse…",
+    "Movelo para despertarlo. Tiene que estar en 2.4 GHz o con el cable puesto.\n"
+    "La app lo detecta sola, no hace falta tocar nada.":
+        "Move it to wake it up. It must be in 2.4 GHz mode or on the cable.\n"
+        "The app detects it automatically, no need to do anything.",
+    "🖱  Botones": "🖱  Buttons", "🎯  DPI": "🎯  DPI", "💡  Luz de la rueda": "💡  Wheel light",
+    "⚡  Rendimiento": "⚡  Performance", "🗂  Copias": "🗂  Backups",
+    "Descartar": "Discard", "Aplicar al mouse": "Apply to mouse",
+    "Botones": "Buttons",
+    "Hacé clic en un botón para elegir qué hace. El selector BT / OFF / 2.4 GHz "
+    "y el botón de emparejar de abajo son de hardware.":
+        "Click a button to choose what it does. The BT / OFF / 2.4 GHz switch and the pairing "
+        "button underneath are hardware only.",
+    "El botón DPI recorre los niveles en orden; la rueda se prende con el color "
+    "de cada nivel. Tocá «Usar ahora» para elegir el nivel activo.":
+        "The DPI button cycles through the levels in order; the wheel lights up in each level's "
+        "colour. Press “Use now” to pick the active level.",
+    "Niveles:": "Levels:", "Color de la rueda en este nivel": "Wheel colour for this level",
+    "Nivel {n}": "Level {n}", "Usar ahora": "Use now", "✓ Activo": "✓ Active",
+    "Luz de la rueda": "Wheel light",
+    "Vista previa con el color del nivel de DPI activo (los colores se eligen en la pestaña DPI).":
+        "Preview with the colour of the active DPI level (colours are set on the DPI page).",
+    "  Luz encendida": "  Light on", "Brillo (1-10):": "Brightness (1-10):",
+    "Más brillo = la rueda se ve mejor, pero gasta más batería. "
+    "Apagarla del todo es lo que más batería ahorra.":
+        "More brightness = easier to see, but uses more battery. Turning it off saves the most.",
+    "Rendimiento": "Performance",
+    "Todo queda guardado dentro del mouse: sirve en cualquier PC.":
+        "Everything is stored inside the mouse: it works on any PC.",
+    "LOD (altura de despegue)": "LOD (lift-off distance)", "Dormir tras": "Sleep after",
+    "Copias de seguridad": "Backups",
+    "Cada vez que abrís la app, y antes de cada cambio, se guarda una copia de toda la "
+    "configuración del mouse en:\n{dir}":
+        "Every time you open the app, and before every change, a copy of the whole mouse "
+        "configuration is saved in:\n{dir}",
+    "Guardar copia ahora": "Save backup now", "Restaurar una copia…": "Restore a backup…",
+    "Abrir carpeta de copias": "Open backups folder",
+    "Conectado por cable": "Connected by cable", "Conectado por receptor 2.4 GHz": "Connected via 2.4 GHz receiver",
+    "Cargando": "Charging",
+    "Mouse dormido o en Bluetooth: movelo o pasalo a 2.4 GHz": "Mouse asleep or in Bluetooth: move it or switch to 2.4 GHz",
+    "No se encuentra el receptor ni el cable": "Receiver or cable not found",
+    "Color de la rueda en el nivel {n}": "Wheel colour for level {n}",
+    "No se aplicó": "Not applied", "Ningún botón quedaría como clic izquierdo.": "No button would be left as left click.",
+    "Revisar": "Check", "El mouse aceptó, pero al releer no coincide: ": "The mouse accepted it, but reading back doesn't match: ",
+    "Error": "Error", "✓  Aplicado: ": "✓  Applied: ", "✓  Copia guardada: {name}": "✓  Backup saved: {name}",
+    "Elegí una copia": "Choose a backup", "Copias (*.bin)": "Backups (*.bin)",
+    "Copia inválida": "Invalid backup", "El archivo no tiene el tamaño esperado.": "The file doesn't have the expected size.",
+    "Restaurar": "Restore", "¿Escribir en el mouse la configuración de\n{name}?": "Write the configuration from\n{name}\nto the mouse?",
+    "✓  Copia restaurada": "✓  Backup restored",
+    "codificación OK: releer y recodificar da exactamente los mismos bytes":
+        "encoding OK: re-reading and re-encoding gives exactly the same bytes",
+}
+
+def tr(text, **kw):
+    """Translate (if the UI is not Spanish) and fill {placeholders}."""
+    out = text if LANG == "es" else EN.get(text, text)
+    return out.format(**kw) if kw else out
+
 MEM_SIZE = 0xC0
 BACKUP_DIR = os.path.expanduser("~/.local/share/redragon-m917/copias")
 
@@ -53,18 +181,18 @@ class Mouse:
         self.close()
         wired, wireless = find_nodes()
         self.cable = bool(wired)
-        last = "No se encontró el receptor ni el cable del mouse."
+        last = tr("No se encontró el receptor ni el cable del mouse.")
         for node in wired + wireless:
             try:
                 fd = os.open(node, os.O_RDWR | os.O_NONBLOCK)
             except OSError as e:
-                last = f"Sin permiso para abrir {node}: {e}"; continue
+                last = tr("Sin permiso para abrir {node}: {e}", node=node, e=e); continue
             self.fd, self.node = fd, node
             try:
                 st = self.query(0x03)
                 if st[6]:
                     return
-                last = "El mouse está apagado, dormido o en modo Bluetooth. Movelo o pasalo a 2.4 GHz."
+                last = tr("El mouse está apagado, dormido o en modo Bluetooth. Movelo o pasalo a 2.4 GHz.")
             except MouseError as e:
                 last = str(e)
             os.close(fd); self.fd = None
@@ -78,7 +206,7 @@ class Mouse:
 
     def query(self, cmd, args=b"", match=None, tries=4, timeout=0.5):
         if self.fd is None:
-            raise MouseError("Mouse no conectado")
+            raise MouseError(tr("Mouse no conectado"))
         for _ in range(tries):
             while select.select([self.fd], [], [], 0)[0]:
                 try: os.read(self.fd, 64)
@@ -86,7 +214,7 @@ class Mouse:
             try:
                 fcntl.ioctl(self.fd, _feat_set(17), _pkt(cmd, args))
             except OSError as e:
-                raise MouseError(f"Error al enviar al mouse: {e}")
+                raise MouseError(tr("Error al enviar al mouse: {e}", e=e))
             end = time.time() + timeout
             while time.time() < end:
                 if select.select([self.fd], [], [], 0.03)[0]:
@@ -94,7 +222,7 @@ class Mouse:
                     if len(r) >= 17 and r[0] == 0x09 and r[1] == cmd and (match is None or match(r)):
                         return r
             time.sleep(0.05)
-        raise MouseError(f"El mouse no respondió (comando 0x{cmd:02x}). ¿Está dormido? Movelo y reintentá.")
+        raise MouseError(tr("El mouse no respondió (comando 0x{cmd:02x}). ¿Está dormido? Movelo y reintentá.", cmd=cmd))
 
     def read(self, addr, n):
         out = bytearray()
@@ -112,7 +240,7 @@ class Mouse:
             r = self.query(0x07, bytes([0, addr >> 8, addr & 0xff, len(chunk)]) + chunk,
                            match=lambda r, a=addr: r[3] == a >> 8 and r[4] == a & 0xff)
             if r[2] != 0:
-                raise MouseError(f"El mouse rechazó la escritura en 0x{addr:02x} (estado {r[2]})")
+                raise MouseError(tr("El mouse rechazó la escritura en 0x{addr:02x} (estado {st})", addr=addr, st=r[2]))
             addr += len(chunk)
             time.sleep(0.01)
 
@@ -128,13 +256,13 @@ class Mouse:
 
 # ---------------------------------------------------------------- modelo de datos
 RATES = [(1, 1000), (2, 500), (4, 250), (8, 125)]
-BUTTONS = [("Izquierdo", 0x60), ("Derecho", 0x64), ("Rueda (clic)", 0x68),
-           ("Lateral atrás", 0x6C), ("Lateral adelante", 0x70), ("Botón DPI", 0x74)]
-FUNCS = [("Clic izquierdo", (0x01, 0x01, 0x00)), ("Clic derecho", (0x01, 0x02, 0x00)),
-         ("Clic medio", (0x01, 0x04, 0x00)), ("Atrás", (0x01, 0x08, 0x00)),
-         ("Adelante", (0x01, 0x10, 0x00)), ("DPI en ciclo", (0x02, 0x01, 0x00)),
-         ("DPI + (experimental)", (0x02, 0x02, 0x00)), ("DPI − (experimental)", (0x02, 0x03, 0x00)),
-         ("Deshabilitado", (0x00, 0x00, 0x00))]
+BUTTONS = [(tr("Izquierdo"), 0x60), (tr("Derecho"), 0x64), (tr("Rueda (clic)"), 0x68),
+           (tr("Lateral atrás"), 0x6C), (tr("Lateral adelante"), 0x70), (tr("Botón DPI"), 0x74)]
+FUNCS = [(tr("Clic izquierdo"), (0x01, 0x01, 0x00)), (tr("Clic derecho"), (0x01, 0x02, 0x00)),
+         (tr("Clic medio"), (0x01, 0x04, 0x00)), (tr("Atrás"), (0x01, 0x08, 0x00)),
+         (tr("Adelante"), (0x01, 0x10, 0x00)), (tr("DPI en ciclo"), (0x02, 0x01, 0x00)),
+         (tr("DPI + (experimental)"), (0x02, 0x02, 0x00)), (tr("DPI − (experimental)"), (0x02, 0x03, 0x00)),
+         (tr("Deshabilitado"), (0x00, 0x00, 0x00))]
 LED_TABLE = [0x10, 0x1E, 0x3C, 0x5A, 0x80, 0x96, 0xB4, 0xD2, 0xE6, 0xFF]   # niveles 1..10 (0x4C)
 
 
@@ -171,20 +299,20 @@ def changes(old, new):
     def p(key, addr, label):
         if old[key] != new[key]:
             w.append((addr, pair(new[key]), label))
-    p("rate", 0x00, "polling rate"); p("levels", 0x02, "cantidad de niveles DPI")
-    p("level", 0x04, "nivel DPI activo"); p("lod", 0x0A, "LOD")
+    p("rate", 0x00, tr("polling rate")); p("levels", 0x02, tr("cantidad de niveles DPI"))
+    p("level", 0x04, tr("nivel DPI activo")); p("lod", 0x0A, "LOD")
     for i in range(8):
         if old["dpi"][i] != new["dpi"][i]:
-            w.append((0x0C + 4 * i, dpi_encode(new["dpi"][i]), f"DPI nivel {i+1}"))
+            w.append((0x0C + 4 * i, dpi_encode(new["dpi"][i]), tr("DPI nivel {n}", n=i + 1)))
         if old["color"][i] != new["color"][i]:
-            w.append((0x2C + 4 * i, block(*new["color"][i]), f"color nivel {i+1}"))
+            w.append((0x2C + 4 * i, block(*new["color"][i]), tr("color nivel {n}", n=i + 1)))
     if (old["ledmode"], old["ledA"], old["ledB"]) != (new["ledmode"], new["ledA"], new["ledB"]):
-        w.append((0x4C, pair(new["ledmode"]) + pair(new["ledA"]) + pair(new["ledB"]), "luz de la rueda"))
+        w.append((0x4C, pair(new["ledmode"]) + pair(new["ledA"]) + pair(new["ledB"]), tr("luz de la rueda")))
     for i, (_, a) in enumerate(BUTTONS):
         if old["buttons"][i] != new["buttons"][i]:
-            w.append((a, block(*new["buttons"][i]), f"botón {BUTTONS[i][0]}"))
-    p("debounce", 0xA9, "debounce"); p("msync", 0xAB, "motion sync"); p("sleep", 0xAD, "tiempo para dormir")
-    p("angle", 0xAF, "angle snapping"); p("ripple", 0xB1, "ripple control"); p("offmove", 0xB3, "apagar luz al mover")
+            w.append((a, block(*new["buttons"][i]), tr("botón {name}", name=BUTTONS[i][0])))
+    p("debounce", 0xA9, "debounce"); p("msync", 0xAB, "motion sync"); p("sleep", 0xAD, tr("tiempo para dormir"))
+    p("angle", 0xAF, "angle snapping"); p("ripple", 0xB1, "ripple control"); p("offmove", 0xB3, tr("apagar luz al mover"))
     return w
 
 
@@ -239,24 +367,24 @@ HOTSPOTS = [(0, 176, 40, "L"), (2, 233, 72, "L"), (4, 127, 145, "L"), (3, 129, 1
             (1, 287, 40, "R"), (5, 233, 136, "R")]
 
 ADV_HELP = {
-    "lod": "Altura a la que el sensor deja de leer cuando levantás el mouse. 1 mm: el cursor no se "
+    "lod": tr("Altura a la que el sensor deja de leer cuando levantás el mouse. 1 mm: el cursor no se "
            "mueve al levantarlo y reacomodarlo (ideal para juegos con sensibilidad baja). 2 mm: tolera "
-           "mejor superficies irregulares o mousepads gruesos.",
-    "debounce": "Tiempo que el mouse ignora el rebote del switch después de un clic. Más bajo = el clic "
+           "mejor superficies irregulares o mousepads gruesos."),
+    "debounce": tr("Tiempo que el mouse ignora el rebote del switch después de un clic. Más bajo = el clic "
                 "registra un poquito antes, pero si es muy bajo puede aparecer doble clic fantasma. "
-                "El fabricante recomienda 8 ms; si notás doble clic, subilo.",
-    "msync": "Sincroniza las lecturas del sensor con el momento en que la PC pide datos. El movimiento "
-             "queda más parejo y consistente, a cambio de un retraso mínimo (menos de 1 ms).",
-    "sleep": "Tiempo sin moverlo antes de que el mouse se duerma para ahorrar batería. Se despierta "
-             "al moverlo o hacer clic. Más corto = más batería; más largo = menos 'despertares'.",
-    "angle": "Corrige el movimiento para que las líneas casi rectas salgan perfectamente rectas. "
-             "Sirve para dibujar o en Office; en juegos conviene apagado porque altera tu movimiento real.",
-    "ripple": "Suaviza el pequeño temblor del sensor a DPI altos. Da un cursor más estable pero agrega "
-              "algo de retraso; en general conviene apagado salvo que uses DPI muy altos.",
-    "offmove": "Apaga la luz de la rueda mientras movés el mouse y la prende cuando lo dejás quieto. "
-               "Ahorra un poco de batería.",
-    "rate": "Cuántas veces por segundo el mouse le informa su posición a la PC. 1000 Hz = 1 ms entre "
-            "reportes, el más fluido. Menos Hz = algo más de batería. Queda guardado en el mouse.",
+                "El fabricante recomienda 8 ms; si notás doble clic, subilo."),
+    "msync": tr("Sincroniza las lecturas del sensor con el momento en que la PC pide datos. El movimiento "
+             "queda más parejo y consistente, a cambio de un retraso mínimo (menos de 1 ms)."),
+    "sleep": tr("Tiempo sin moverlo antes de que el mouse se duerma para ahorrar batería. Se despierta "
+             "al moverlo o hacer clic. Más corto = más batería; más largo = menos 'despertares'."),
+    "angle": tr("Corrige el movimiento para que las líneas casi rectas salgan perfectamente rectas. "
+             "Sirve para dibujar o en Office; en juegos conviene apagado porque altera tu movimiento real."),
+    "ripple": tr("Suaviza el pequeño temblor del sensor a DPI altos. Da un cursor más estable pero agrega "
+              "algo de retraso; en general conviene apagado salvo que uses DPI muy altos."),
+    "offmove": tr("Apaga la luz de la rueda mientras movés el mouse y la prende cuando lo dejás quieto. "
+               "Ahorra un poco de batería."),
+    "rate": tr("Cuántas veces por segundo el mouse le informa su posición a la PC. 1000 Hz = 1 ms entre "
+            "reportes, el más fluido. Menos Hz = algo más de batería. Queda guardado en el mouse."),
 }
 
 
@@ -278,7 +406,7 @@ def gui():
         f = W.QFrame(); f.setObjectName("card"); return f
 
     def func_name(code):
-        return next((lab for lab, c in FUNCS if c == tuple(code)), "Otro (" + " ".join(f"{x:02X}" for x in code) + ")")
+        return next((lab for lab, c in FUNCS if c == tuple(code)), tr("Otro ({code})", code=" ".join(f"{x:02X}" for x in code)))
 
     # ---------- página de botones: foto del mouse con cada botón señalado
     class MouseCanvas(W.QWidget):
@@ -413,7 +541,7 @@ def gui():
             head = W.QFrame(); head.setObjectName("head")
             h = W.QHBoxLayout(head); h.setContentsMargins(18, 10, 18, 10)
             self.dot = W.QLabel("●"); self.dot.setStyleSheet("color:#666; font-size: 12pt")
-            self.status = W.QLabel("Buscando mouse…"); self.status.setObjectName("sub")
+            self.status = W.QLabel(tr("Buscando mouse…")); self.status.setObjectName("sub")
             self.batico = W.QLabel(); self.bat = W.QLabel(""); self.bat.setStyleSheet("font-weight:bold; font-size: 11pt")
             h.addWidget(self.dot); h.addWidget(self.status, 1)
             h.addWidget(self.batico); h.addSpacing(4); h.addWidget(self.bat)
@@ -423,10 +551,10 @@ def gui():
             wait = W.QWidget(); wl = W.QVBoxLayout(wait); wl.addStretch()
             wimg = W.QLabel(); wimg.setPixmap(pix("mouse.png").scaledToWidth(220, C.Qt.TransformationMode.SmoothTransformation))
             wimg.setAlignment(C.Qt.AlignmentFlag.AlignCenter); wl.addWidget(wimg)
-            self.wait_text = W.QLabel("Buscando el mouse…"); self.wait_text.setObjectName("title")
+            self.wait_text = W.QLabel(tr("Buscando el mouse…")); self.wait_text.setObjectName("title")
             self.wait_text.setAlignment(C.Qt.AlignmentFlag.AlignCenter); wl.addWidget(self.wait_text)
-            wsub = W.QLabel("Movelo para despertarlo. Tiene que estar en 2.4 GHz o con el cable puesto.\n"
-                            "La app lo detecta sola, no hace falta tocar nada.")
+            wsub = W.QLabel(tr("Movelo para despertarlo. Tiene que estar en 2.4 GHz o con el cable puesto.\n"
+                               "La app lo detecta sola, no hace falta tocar nada."))
             wsub.setObjectName("sub"); wsub.setAlignment(C.Qt.AlignmentFlag.AlignCenter); wl.addWidget(wsub); wl.addStretch()
             bodyw = W.QWidget(); body = W.QHBoxLayout(bodyw); body.setSpacing(0); body.setContentsMargins(0, 0, 0, 0)
             self.outer.addWidget(wait); self.outer.addWidget(bodyw)
@@ -436,15 +564,15 @@ def gui():
             for name, page in (("🖱  Botones", self.page_buttons()), ("🎯  DPI", self.page_dpi()),
                                ("💡  Luz de la rueda", self.page_light()), ("⚡  Rendimiento", self.page_perf()),
                                ("🗂  Copias", self.page_backup())):
-                self.nav.addItem(name); self.pages.addWidget(page)
+                self.nav.addItem(tr(name)); self.pages.addWidget(page)
             self.nav.currentRowChanged.connect(self.pages.setCurrentIndex); self.nav.setCurrentRow(0)
 
             # barra inferior
             foot = W.QFrame(); foot.setObjectName("foot")
             fl = W.QHBoxLayout(foot); fl.setContentsMargins(18, 10, 18, 10)
             self.pending = W.QLabel(""); self.pending.setObjectName("pending"); self.pending.setWordWrap(True)
-            self.revert_btn = W.QPushButton("Descartar"); self.revert_btn.clicked.connect(self.show_state)
-            self.apply_btn = W.QPushButton("Aplicar al mouse"); self.apply_btn.setObjectName("apply")
+            self.revert_btn = W.QPushButton(tr("Descartar")); self.revert_btn.clicked.connect(self.show_state)
+            self.apply_btn = W.QPushButton(tr("Aplicar al mouse")); self.apply_btn.setObjectName("apply")
             self.apply_btn.clicked.connect(self.apply)
             fl.addWidget(self.pending, 1); fl.addWidget(self.revert_btn); fl.addWidget(self.apply_btn)
             root.addWidget(foot)
@@ -464,18 +592,18 @@ def gui():
 
         def page_buttons(self):
             w = W.QWidget(); v = W.QVBoxLayout(w); v.setContentsMargins(24, 18, 24, 12)
-            self.page_title(v, "Botones", "Hacé clic en un botón para elegir qué hace. El selector BT / OFF / 2.4 GHz "
-                                          "y el botón de emparejar de abajo son de hardware.")
+            self.page_title(v, tr("Botones"), tr("Hacé clic en un botón para elegir qué hace. El selector BT / OFF / 2.4 GHz "
+                                                "y el botón de emparejar de abajo son de hardware."))
             self.canvas = MouseCanvas(); self.canvas.clicked.connect(self.choose_func)
             v.addWidget(self.canvas, 1)
             return w
 
         def page_dpi(self):
             w = W.QWidget(); v = W.QVBoxLayout(w); v.setContentsMargins(24, 18, 24, 12); v.setSpacing(10)
-            self.page_title(v, "DPI", "El botón DPI recorre los niveles en orden; la rueda se prende con el color "
-                                      "de cada nivel. Tocá «Usar ahora» para elegir el nivel activo.")
+            self.page_title(v, "DPI", tr("El botón DPI recorre los niveles en orden; la rueda se prende con el color "
+                                         "de cada nivel. Tocá «Usar ahora» para elegir el nivel activo."))
             self.ladder = DpiLadder(); v.addWidget(self.ladder)
-            h = W.QHBoxLayout(); h.addWidget(W.QLabel("Niveles:"))
+            h = W.QHBoxLayout(); h.addWidget(W.QLabel(tr("Niveles:")))
             self.lvl_minus = W.QPushButton("−"); self.lvl_plus = W.QPushButton("+")
             self.lvl_count = W.QLabel(); self.lvl_count.setStyleSheet("font-weight:bold; min-width: 18px; qproperty-alignment: AlignCenter;")
             for b in (self.lvl_minus, self.lvl_plus): b.setFixedWidth(36)
@@ -486,10 +614,10 @@ def gui():
             self.level_group = W.QButtonGroup(self); self.rows = []; self.nlevels = 1
             for i in range(8):
                 c = card(); g = W.QHBoxLayout(c); g.setContentsMargins(12, 8, 14, 8); g.setSpacing(12)
-                sw = W.QPushButton(); sw.setFixedSize(30, 30); sw.setToolTip("Color de la rueda en este nivel")
+                sw = W.QPushButton(); sw.setFixedSize(30, 30); sw.setToolTip(tr("Color de la rueda en este nivel"))
                 sw.setCursor(C.Qt.CursorShape.PointingHandCursor)
                 sw.clicked.connect(lambda _, i=i: self.pick_color(i))
-                name = W.QLabel(f"Nivel {i+1}"); name.setFixedWidth(62); name.setStyleSheet("font-weight:bold")
+                name = W.QLabel(tr("Nivel {n}", n=i + 1)); name.setFixedWidth(62); name.setStyleSheet("font-weight:bold")
                 sp = W.QSpinBox(); sp.setRange(50, 26000); sp.setSingleStep(50); sp.setKeyboardTracking(False)
                 sp.setFixedSize(108, 40); sp.setAlignment(C.Qt.AlignmentFlag.AlignRight | C.Qt.AlignmentFlag.AlignVCenter)
                 sp.setStyleSheet("QSpinBox{font-size:15pt; font-weight:bold; padding:0 8px;}"
@@ -503,7 +631,7 @@ def gui():
                 for d in (400, 800, 1600, 3200):
                     pb = W.QPushButton(str(d)); pb.setObjectName("chip"); pb.clicked.connect(lambda _, sp=sp, d=d: sp.setValue(d))
                     presets.addWidget(pb)
-                use = W.QPushButton("Usar ahora"); use.setCheckable(True); use.setFixedWidth(104)
+                use = W.QPushButton(tr("Usar ahora")); use.setCheckable(True); use.setFixedWidth(104)
                 self.level_group.addButton(use, i)
                 g.addWidget(sw); g.addWidget(name); g.addWidget(sp); g.addWidget(unit); g.addWidget(sl, 1)
                 g.addLayout(presets); g.addWidget(use)
@@ -521,16 +649,16 @@ def gui():
 
         def page_light(self):
             w = W.QWidget(); v = W.QVBoxLayout(w); v.setContentsMargins(24, 18, 24, 12)
-            self.page_title(v, "Luz de la rueda", "Vista previa con el color del nivel de DPI activo (los colores se eligen en la pestaña DPI).")
+            self.page_title(v, tr("Luz de la rueda"), tr("Vista previa con el color del nivel de DPI activo (los colores se eligen en la pestaña DPI)."))
             h = W.QHBoxLayout(); self.wheel = WheelPreview(); h.addWidget(self.wheel)
             c = card(); f = W.QFormLayout(c); f.setContentsMargins(18, 16, 18, 16); f.setVerticalSpacing(14)
-            self.led_on = W.QCheckBox("  Luz encendida"); f.addRow(self.led_on)
+            self.led_on = W.QCheckBox(tr("  Luz encendida")); f.addRow(self.led_on)
             self.ledA = W.QSlider(C.Qt.Orientation.Horizontal); self.ledA.setRange(1, 10)
             self.ledAv = W.QLabel(); self.ledA.valueChanged.connect(lambda x: self.ledAv.setText(str(x)))
             ha = W.QHBoxLayout(); ha.addWidget(self.ledA); ha.addWidget(self.ledAv)
-            f.addRow("Brillo (1-10):", ha)
-            f.addRow(help_label("Más brillo = la rueda se ve mejor, pero gasta más batería. "
-                                "Apagarla del todo es lo que más batería ahorra."))
+            f.addRow(tr("Brillo (1-10):"), ha)
+            f.addRow(help_label(tr("Más brillo = la rueda se ve mejor, pero gasta más batería. "
+                                   "Apagarla del todo es lo que más batería ahorra.")))
             h.addWidget(c, 1); v.addLayout(h); v.addStretch()
             self.led_on.toggled.connect(self.edited); self.ledA.valueChanged.connect(self.edited)
             return w
@@ -544,7 +672,7 @@ def gui():
 
         def page_perf(self):
             w = W.QWidget(); v = W.QVBoxLayout(w); v.setContentsMargins(24, 18, 24, 12); v.setSpacing(10)
-            self.page_title(v, "Rendimiento", "Todo queda guardado dentro del mouse: sirve en cualquier PC.")
+            self.page_title(v, tr("Rendimiento"), tr("Todo queda guardado dentro del mouse: sirve en cualquier PC."))
             rw = W.QWidget(); rw.setObjectName("row"); rh = W.QHBoxLayout(rw); rh.setContentsMargins(0, 0, 0, 0)
             self.rate_group = W.QButtonGroup(self)
             for code, hz in reversed(RATES):
@@ -554,7 +682,7 @@ def gui():
             self.adv_row(v, "Polling rate", "rate", rw)
             self.lod = W.QComboBox(); self.lod.addItem("1 mm", 1); self.lod.addItem("2 mm", 2)
             self.lod.currentIndexChanged.connect(self.edited)
-            self.adv_row(v, "LOD (altura de despegue)", "lod", self.lod)
+            self.adv_row(v, tr("LOD (altura de despegue)"), "lod", self.lod)
             self.debounce = W.QSpinBox(); self.debounce.setRange(0, 30); self.debounce.setSuffix(" ms")
             self.debounce.valueChanged.connect(self.edited)
             self.adv_row(v, "Debounce", "debounce", self.debounce)
@@ -562,7 +690,7 @@ def gui():
             for s in (1, 3, 6, 12, 18, 30, 60, 90, 180):
                 self.sleep.addItem(f"{s*10} s" if s < 6 else f"{s*10//60} min", s)
             self.sleep.currentIndexChanged.connect(self.edited)
-            self.adv_row(v, "Dormir tras", "sleep", self.sleep)
+            self.adv_row(v, tr("Dormir tras"), "sleep", self.sleep)
             self.angle, self.ripple = (W.QCheckBox() for _ in range(2))
             for chk, title, key in ((self.angle, "Angle snapping", "angle"),
                                     (self.ripple, "Ripple control", "ripple")):   # "apagar luz al mover": no funciona en este modelo
@@ -572,11 +700,11 @@ def gui():
 
         def page_backup(self):
             w = W.QWidget(); v = W.QVBoxLayout(w); v.setContentsMargins(24, 18, 24, 12)
-            self.page_title(v, "Copias de seguridad",
-                            "Cada vez que abrís la app, y antes de cada cambio, se guarda una copia de toda la "
-                            f"configuración del mouse en:\n{BACKUP_DIR}")
-            for text, fn in (("Guardar copia ahora", self.backup_now), ("Restaurar una copia…", self.restore),
-                             ("Abrir carpeta de copias", lambda: G.QDesktopServices.openUrl(C.QUrl.fromLocalFile(BACKUP_DIR)))):
+            self.page_title(v, tr("Copias de seguridad"),
+                            tr("Cada vez que abrís la app, y antes de cada cambio, se guarda una copia de toda la "
+                               "configuración del mouse en:\n{dir}", dir=BACKUP_DIR))
+            for text, fn in ((tr("Guardar copia ahora"), self.backup_now), (tr("Restaurar una copia…"), self.restore),
+                             (tr("Abrir carpeta de copias"), lambda: G.QDesktopServices.openUrl(C.QUrl.fromLocalFile(BACKUP_DIR)))):
                 b = W.QPushButton(text); b.clicked.connect(fn); b.setMaximumWidth(280); v.addWidget(b)
             v.addStretch(); return w
 
@@ -606,17 +734,17 @@ def gui():
                     finally:
                         self.set_busy(False)
                 pct, chg, full = self.mouse.battery()
-                self.set_status(True, "Conectado por " + ("cable" if self.mouse.cable else "receptor 2.4 GHz"))
+                self.set_status(True, tr("Conectado por cable") if self.mouse.cable else tr("Conectado por receptor 2.4 GHz"))
                 if chg and not full:
-                    self.batico.setPixmap(pix("power_charging.png")); self.bat.setText("Cargando")
+                    self.batico.setPixmap(pix("power_charging.png")); self.bat.setText(tr("Cargando"))
                 else:
                     self.batico.setPixmap(pix(f"power{min(4, max(1, (pct + 24) // 25))}.png"))
                     self.bat.setText(f"{pct} %")
             except MouseError as e:
                 self.mouse.close()
                 asleep = bool(wired or wireless)
-                self.set_status(False, "Mouse dormido o en Bluetooth: movelo o pasalo a 2.4 GHz" if asleep
-                                else "No se encuentra el receptor ni el cable")
+                self.set_status(False, tr("Mouse dormido o en Bluetooth: movelo o pasalo a 2.4 GHz") if asleep
+                                else tr("No se encuentra el receptor ni el cable"))
                 self.batico.clear(); self.bat.setText("")
                 if self.cur is None:
                     self.outer.setCurrentIndex(0); self.wait_text.setText(self.status.text())
@@ -684,7 +812,7 @@ def gui():
             self.rows[i][2].setStyleSheet(f"background: rgb({r},{g},{b}); border: 2px solid #1d1f21; border-radius: 15px;")
 
         def pick_color(self, i):
-            c = W.QColorDialog.getColor(G.QColor(*self.colors[i]), self, f"Color de la rueda en el nivel {i+1}")
+            c = W.QColorDialog.getColor(G.QColor(*self.colors[i]), self, tr("Color de la rueda en el nivel {n}", n=i + 1))
             if c.isValid():
                 self.colors[i] = (c.red(), c.green(), c.blue()); self.paint(i); self.edited()
 
@@ -718,7 +846,7 @@ def gui():
                 self.canvas.set_text(idx, BUTTONS[idx][0], func_name(new["buttons"][idx]),
                                      tuple(new["buttons"][idx]) != tuple(self.cur["buttons"][idx]))
             for i, (c, use, sw, sp) in enumerate(self.rows):
-                act = i == new["level"]; use.setText("✓ Activo" if act else "Usar ahora")
+                act = i == new["level"]; use.setText(tr("✓ Activo") if act else tr("Usar ahora"))
                 c.setProperty("active", act); c.style().unpolish(c); c.style().polish(c)
             self.ladder.set([(new["dpi"][i], new["color"][i]) for i in range(new["levels"])], new["level"])
             self.wheel.set(new["color"][new["level"]], self.ledA.value(), self.led_on.isChecked())
@@ -730,7 +858,7 @@ def gui():
             new = self.wanted(); ch = changes(self.cur, new)
             if not ch: return
             if (0x01, 0x01, 0x00) not in [tuple(b) for b in new["buttons"]]:
-                W.QMessageBox.warning(self, "No se aplicó", "Ningún botón quedaría como clic izquierdo."); return
+                W.QMessageBox.warning(self, tr("No se aplicó"), tr("Ningún botón quedaría como clic izquierdo.")); return
             self.set_busy(True)
             try:
                 save_backup(self.mem, "antes_de_aplicar")
@@ -740,23 +868,23 @@ def gui():
                 bad = changes(self.cur, new)
                 self.set_busy(False)
                 if bad:
-                    W.QMessageBox.warning(self, "Revisar", "El mouse aceptó, pero al releer no coincide: " + ", ".join(b[2] for b in bad))
+                    W.QMessageBox.warning(self, tr("Revisar"), tr("El mouse aceptó, pero al releer no coincide: ") + ", ".join(b[2] for b in bad))
                 self.show_state()
-                self.pending.setText("✓  Aplicado: " + ", ".join(c[2] for c in ch))
+                self.pending.setText(tr("✓  Aplicado: ") + ", ".join(c[2] for c in ch))
             except MouseError as e:
-                self.set_busy(False); W.QMessageBox.critical(self, "Error", str(e)); self.reload()
+                self.set_busy(False); W.QMessageBox.critical(self, tr("Error"), str(e)); self.reload()
 
         def backup_now(self):
             if self.mem is None: return
-            fn = save_backup(self.mouse.dump(), "manual"); self.pending.setText(f"✓  Copia guardada: {os.path.basename(fn)}")
+            fn = save_backup(self.mouse.dump(), "manual"); self.pending.setText(tr("✓  Copia guardada: {name}", name=os.path.basename(fn)))
 
         def restore(self):
-            fn, _ = W.QFileDialog.getOpenFileName(self, "Elegí una copia", BACKUP_DIR, "Copias (*.bin)")
+            fn, _ = W.QFileDialog.getOpenFileName(self, tr("Elegí una copia"), BACKUP_DIR, tr("Copias (*.bin)"))
             if not fn: return
             data = open(fn, "rb").read()
             if len(data) != MEM_SIZE:
-                W.QMessageBox.warning(self, "Copia inválida", "El archivo no tiene el tamaño esperado."); return
-            if W.QMessageBox.question(self, "Restaurar", f"¿Escribir en el mouse la configuración de\n{os.path.basename(fn)}?") \
+                W.QMessageBox.warning(self, tr("Copia inválida"), tr("El archivo no tiene el tamaño esperado.")); return
+            if W.QMessageBox.question(self, tr("Restaurar"), tr("¿Escribir en el mouse la configuración de\n{name}?", name=os.path.basename(fn))) \
                     != W.QMessageBox.StandardButton.Yes:
                 return
             self.set_busy(True)
@@ -765,9 +893,9 @@ def gui():
                 for a in range(0, MEM_SIZE, 10):
                     if data[a:a + 10] != self.mem[a:a + 10]:
                         self.mouse.write(a, data[a:a + 10])
-                self.set_busy(False); self.reload(); self.pending.setText("✓  Copia restaurada")
+                self.set_busy(False); self.reload(); self.pending.setText(tr("✓  Copia restaurada"))
             except MouseError as e:
-                self.set_busy(False); W.QMessageBox.critical(self, "Error", str(e)); self.reload()
+                self.set_busy(False); W.QMessageBox.critical(self, tr("Error"), str(e)); self.reload()
 
     w = Win(); w.show()
     sys.exit(app.exec())
@@ -785,7 +913,7 @@ def selftest():
     for i, (_, a) in enumerate(BUTTONS):
         assert block(*s["buttons"][i]) == mem[a:a + 4], a
     assert changes(s, s) == []
-    print("codificación OK: releer y recodificar da exactamente los mismos bytes")
+    print(tr("codificación OK: releer y recodificar da exactamente los mismos bytes"))
 
 
 if __name__ == "__main__":

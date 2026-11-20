@@ -12,13 +12,13 @@
 
 [**English**](#-english) · [**Español**](#-español)
 
-<img src="docs/img/botones.png" alt="Buttons page" width="820">
+<img src="docs/img/en/botones.png" alt="Buttons page" width="820">
 
 </div>
 
 ---
 
-## 🇬🇧 English
+## 🇺🇸 English
 
 Redragon only ships Windows software for this mouse. This app talks to it directly over
 `hidraw`, so you can change everything from Linux. Settings are stored **inside the
@@ -38,8 +38,8 @@ mouse**, so they keep working on any PC.
 
 <table>
 <tr>
-<td><img src="docs/img/dpi.png" alt="DPI page"></td>
-<td><img src="docs/img/rendimiento.png" alt="Performance page"></td>
+<td><img src="docs/img/en/dpi.png" alt="DPI page"></td>
+<td><img src="docs/img/en/rendimiento.png" alt="Performance page"></td>
 </tr>
 <tr>
 <td align="center"><sub>DPI levels</sub></td>
@@ -83,7 +83,8 @@ talk to the mouse without root. To remove it: `./uninstall.sh`.
 
 - The battery % is reported in 5 % steps and is voltage based. On the cable it reads high,
   so — like the official app — it shows *Cargando* (charging) instead of a number.
-- The UI is in Spanish (Rioplatense).
+- The UI is in **English or Spanish**, following your system language. Force one with
+  `M917_LANG=en redragon-m917` (or `es`).
 - How the mouse protocol works: [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
@@ -94,7 +95,8 @@ talk to the mouse without root. To remove it: `./uninstall.sh`.
 oficial es solo para Windows? Somos dos. 🙃
 
 Esta app habla directo con el mouse y te deja cambiar todo lo que cambia el programa
-oficial, sin máquinas virtuales ni Wine. Y como la configuración se guarda **adentro del
+oficial, sin máquinas virtuales ni Wine. Está en **español** (rioplatense, obvio) y en
+**inglés**: elige sola según el idioma de tu sistema. Y como la configuración se guarda **adentro del
 mouse**, después la seguís teniendo en cualquier compu, aunque sea Windows.
 
 ### Qué podés hacer
@@ -111,12 +113,12 @@ mouse**, después la seguís teniendo en cualquier compu, aunque sea Windows.
 
 <table>
 <tr>
-<td><img src="docs/img/dpi.png" alt="Pestaña DPI"></td>
-<td><img src="docs/img/luz.png" alt="Pestaña luz de la rueda"></td>
+<td><img src="docs/img/es/botones.png" alt="Pestaña botones"></td>
+<td><img src="docs/img/es/dpi.png" alt="Pestaña DPI"></td>
 </tr>
 <tr>
+<td align="center"><sub>Botones</sub></td>
 <td align="center"><sub>Niveles de DPI con sus colores</sub></td>
-<td align="center"><sub>Luz de la rueda</sub></td>
 </tr>
 </table>
 
@@ -144,6 +146,7 @@ estaban, por las dudas.
 |---|---|
 | 📡 | El mouse tiene que estar en **2.4 GHz o con cable**. En Bluetooth no pasa por el receptor y la app no lo ve |
 | 😴 | Si el mouse se durmió, movelo un poco y la app lo encuentra sola |
+| 🌐 | Si tu sistema está en otro idioma y la querés en español: `M917_LANG=es redragon-m917` |
 | 🔋 | La batería va de a 5 %. Con el cable puesto el mouse marca de más, así que, igual que el programa oficial, muestra *Cargando* en vez del número |
 | 🧪 | Está probada con **un** M917 ST4R Pro. Otros mouse de Redragon pueden parecerse, pero la app no los abre a propósito: si la memoria está ordenada distinto, podría escribir donde no debe |
 
